@@ -1,0 +1,51 @@
+name: Reddit AI Daily Report
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+
+jobs:
+  generate-report:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 下載程式碼
+        uses: actions/checkout@v4
+
+      - name: 🐍 安裝 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 📦 安裝套件
+        run: pip install -r requirements.txt
+
+      - name: 📡 抓取 Reddit 資料
+        run: python reddit_report.py --mode daily --output ./output
+        env:
+          REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
+          REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
+
+      - name: 🌐 產生 HTML 報告
+        run: python generate_html.py ./output/latest.json ./docs/index.html
+
+      - name: 📤 更新 GitHub Pages
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/index.html output/
+          git diff --staged --quiet || git commit -m "📰 更新日報 $(date +%Y-%m-%d)"
+          git push
+
+      - name: 📱 發送 Telegram 通知
+        if: success()
+        run: python notify_telegram.py ./output/latest.json
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          REPORT_URL: ${{ secrets.REPORT_URL }}
